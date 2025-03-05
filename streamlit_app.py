@@ -32,84 +32,112 @@ def calculate_angle(a, b, c):
 
     return angle_degrees
 
-def draw_angle_arc(image, point1, point2, point3, angle, color=(0, 200, 0), thickness=2, radius=30, text_offset=(0, 0)):
+def draw_angle_arc(image, hip_point, shoulder_point, elbow_point, angle, color=(0, 200, 0), radius=30, text_offset=(0, 0)):
     """
-    Draw an arc to visualize the angle between three points with point2 as the vertex
-    Also adds a label with the angle value
+    Draw an arc to visualize the angle between three points
+    Always fills the angle between the trunk and arm
     
     Args:
         image: Image to draw on
-        point1, point2, point3: Points defining the angle (point2 is the vertex)
+        hip_point: Hip point
+        shoulder_point: Shoulder point (vertex)
+        elbow_point: Elbow point
         angle: The angle in degrees
         color: Color of the arc (BGR)
-        thickness: Thickness of the arc
         radius: Radius of the arc
         text_offset: Offset for the angle text label (x, y)
     """
-    # Convert points to numpy arrays if they are not already
-    point1 = np.array(point1)
-    point2 = np.array(point2)
-    point3 = np.array(point3)
+    # Convert points to numpy arrays
+    hip = np.array(hip_point)
+    shoulder = np.array(shoulder_point)
+    elbow = np.array(elbow_point)
     
-    # Calculate vectors from vertex to other points
-    vec1 = point1 - point2
-    vec2 = point3 - point2
+    # Calculate vectors from shoulder to hip and shoulder to elbow
+    shoulder_to_hip = hip - shoulder
+    shoulder_to_elbow = elbow - shoulder
     
-    # Normalize vectors
-    vec1 = vec1 / np.linalg.norm(vec1)
-    vec2 = vec2 / np.linalg.norm(vec2)
+    # Calculate unit vectors
+    if np.linalg.norm(shoulder_to_hip) == 0 or np.linalg.norm(shoulder_to_elbow) == 0:
+        return image  # Cannot draw arc if vectors have zero length
     
-    # Calculate start and end angles
-    start_angle = math.atan2(vec1[1], vec1[0])
-    end_angle = math.atan2(vec2[1], vec2[0])
+    shoulder_to_hip_unit = shoulder_to_hip / np.linalg.norm(shoulder_to_hip)
+    shoulder_to_elbow_unit = shoulder_to_elbow / np.linalg.norm(shoulder_to_elbow)
     
-    # Ensure the arc is drawn in the correct direction
-    if start_angle > end_angle:
-        start_angle, end_angle = end_angle, start_angle
-    
-    # Convert vertex point to integer coordinates
-    center = (int(point2[0]), int(point2[1]))
-    
-    # Calculate semi-transparent overlay points
+    # Create a list of points to make the arc
     arc_points = []
-    num_points = 40  # Number of points to create a smooth arc
     
-    # Add more points for a filled sector
-    for i in range(num_points + 1):
-        current_angle = start_angle + (end_angle - start_angle) * i / num_points
-        x = center[0] + int(radius * math.cos(current_angle))
-        y = center[1] + int(radius * math.sin(current_angle))
-        arc_points.append((x, y))
+    # Number of steps to create a smooth arc
+    steps = 40
     
-    # Create a semi-transparent overlay for the angle
+    # Generate a series of points along the arc
+    for i in range(steps + 1):
+        # Linear interpolation factor
+        t = i / steps
+        
+        # Spherical linear interpolation (SLERP) between the unit vectors
+        # This ensures the arc follows the shortest path between the two vectors
+        # Formula: slerp(v1, v2, t) = sin((1-t)*angle) / sin(angle) * v1 + sin(t*angle) / sin(angle) * v2
+        
+        # Dot product between the unit vectors (clamped to avoid numerical issues)
+        dot = np.clip(np.dot(shoulder_to_hip_unit, shoulder_to_elbow_unit), -1.0, 1.0)
+        
+        # Angle between the unit vectors
+        omega = math.acos(dot)
+        
+        # If vectors are too close, use linear interpolation
+        if abs(omega) < 1e-6:
+            interp_vector = (1 - t) * shoulder_to_hip_unit + t * shoulder_to_elbow_unit
+            interp_vector = interp_vector / np.linalg.norm(interp_vector)
+        else:
+            # SLERP formula
+            interp_vector = (math.sin((1-t)*omega) / math.sin(omega)) * shoulder_to_hip_unit + \
+                           (math.sin(t*omega) / math.sin(omega)) * shoulder_to_elbow_unit
+        
+        # Scale by radius and add to shoulder point
+        arc_point = shoulder + radius * interp_vector
+        arc_points.append((int(arc_point[0]), int(arc_point[1])))
+    
+    # Create a polygon for shading (including the shoulder point)
+    shading_polygon = np.array([shoulder_point] + arc_points, dtype=np.int32)
+    
+    # Create a copy of the image for the overlay
     overlay = image.copy()
     
-    # Draw a filled polygon for the sector
-    arc_points_array = np.array([center] + arc_points, np.int32)
-    cv2.fillPoly(overlay, [arc_points_array], color)
+    # Draw the filled polygon
+    cv2.fillPoly(overlay, [shading_polygon], color)
     
     # Apply the overlay with transparency
     alpha = 0.4  # Transparency factor
     cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
     
-    # Draw the outline of the arc
-    for i in range(num_points):
-        cv2.line(image, arc_points[i], arc_points[i+1], color, thickness)
+    # Draw outline of the arc
+    for i in range(len(arc_points) - 1):
+        cv2.line(image, arc_points[i], arc_points[i+1], color, 2)
     
-    # Draw lines from vertex to arc
-    cv2.line(image, center, arc_points[0], color, thickness)
-    cv2.line(image, center, arc_points[-1], color, thickness)
+    # Draw lines from shoulder to arc endpoints
+    cv2.line(image, shoulder_point, arc_points[0], color, 2)
+    cv2.line(image, shoulder_point, arc_points[-1], color, 2)
     
     # Draw angle text with a background box for better visibility
     text = f"{angle:.1f} deg"
     
-    # Calculate text position (in the middle of the arc)
-    middle_angle = (start_angle + end_angle) / 2
-    text_radius = radius * 1.3  # Place text a bit further out
-    text_x = center[0] + int(text_radius * math.cos(middle_angle)) + text_offset[0]
-    text_y = center[1] + int(text_radius * math.sin(middle_angle)) + text_offset[1]
+    # Determine a good position for the text - midway around the arc
+    midpoint_idx = len(arc_points) // 2
+    text_direction = np.array(arc_points[midpoint_idx]) - np.array(shoulder_point)
     
-    # Get text size
+    # Normalize and scale this vector to place text properly
+    if np.linalg.norm(text_direction) > 0:
+        text_direction = text_direction / np.linalg.norm(text_direction) * (radius * 1.3)
+        text_position = np.array(shoulder_point) + text_direction
+    else:
+        # Fallback if text_direction is zero
+        text_position = np.array(shoulder_point) + np.array([radius * 1.3, 0])
+    
+    # Apply additional offset
+    text_x = int(text_position[0]) + text_offset[0]
+    text_y = int(text_position[1]) + text_offset[1]
+    
+    # Get text size for background box
     text_size, _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
     
     # Draw background box
