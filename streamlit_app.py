@@ -162,16 +162,37 @@ if 'left_shoulder_min' not in st.session_state:
     st.session_state.right_shoulder_max = float('-inf')
     st.session_state.snapshot_count = 0
 
-# Initialize MediaPipe Pose
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
-pose = mp_pose.Pose(
-    static_image_mode=True,  # Set to True for images
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5)
+# Cache the MediaPipe initialization to save memory
+@st.cache_resource
+def load_pose_model():
+    """Cache the MediaPipe pose model to avoid reloading it"""
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
+    pose = mp_pose.Pose(
+        static_image_mode=True,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5)
+    return mp_pose, mp_drawing, pose
+
+# Get cached pose model
+mp_pose, mp_drawing, pose = load_pose_model()
 
 # Function to process a single image frame
+@st.cache_data(ttl=300, max_entries=10)  # Cache for 5 minutes, keep up to 10 entries
+def cached_process_image(img_bytes):
+    """Process image with caching to improve performance and reduce memory usage"""
+    # Convert bytes to numpy array
+    img = np.array(Image.open(img_bytes))
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    
+    # Process the image using the non-cached function
+    return process_image(img)
+
 def process_image(img):
+    """
+    Process an image to detect pose and calculate shoulder angles
+    This function does the actual work and is called by the cached function
+    """
     # Convert the image to RGB (MediaPipe requires RGB input)
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
@@ -234,12 +255,6 @@ def process_image(img):
             [right_shoulder.x, right_shoulder.y],
             [right_elbow.x, right_elbow.y]
         )
-        
-        # Update min/max values
-        st.session_state.left_shoulder_min = min(st.session_state.left_shoulder_min, left_shoulder_angle)
-        st.session_state.left_shoulder_max = max(st.session_state.left_shoulder_max, left_shoulder_angle)
-        st.session_state.right_shoulder_min = min(st.session_state.right_shoulder_min, right_shoulder_angle)
-        st.session_state.right_shoulder_max = max(st.session_state.right_shoulder_max, right_shoulder_angle)
         
         # Draw trunk and arm lines for visualization
         # Left side
@@ -328,6 +343,10 @@ with col2:
         st.session_state.right_shoulder_min = float('inf')
         st.session_state.right_shoulder_max = float('-inf')
         st.session_state.snapshot_count = 0
+        
+        # Clear the cache when resetting to free memory
+        cached_process_image.clear()
+        
         st.rerun()
     
     # Display range data
@@ -338,6 +357,11 @@ with col2:
     # Display snapshot count
     st.write(f"Snapshots taken: {st.session_state.snapshot_count}")
     
+    # Add button to clear cache
+    if st.button("Clear Cache"):
+        cached_process_image.clear()
+        st.success("Cache cleared successfully!")
+    
     st.subheader("Instructions")
     st.write("""
     1. Allow camera access when prompted
@@ -345,6 +369,7 @@ with col2:
     3. Take snapshots by clicking the camera button
     4. Each snapshot will be analyzed to show shoulder angles
     5. Click "Reset" to start a new session
+    6. If app becomes slow, try clicking "Clear Cache"
     """)
     
     # Color legend
@@ -377,12 +402,8 @@ with col1:
         # Increment snapshot count
         st.session_state.snapshot_count += 1
         
-        # Convert the image for processing
-        img = np.array(Image.open(camera_image))
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        
-        # Process the image
-        processed_img, left_angle, right_angle = process_image(img)
+        # Process the image using the cached function
+        processed_img, left_angle, right_angle = cached_process_image(camera_image)
         
         # Display the processed image
         st.image(cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB), 
