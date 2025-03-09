@@ -3,6 +3,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import math
+import time
 from PIL import Image
 
 st.title("🎈 Joint Angle Analysis")
@@ -13,7 +14,7 @@ st.write(
 # Add a selection for which joint to analyze
 analysis_type = st.radio(
     "Select joint to analyze:",
-    ["Shoulder Angles", "Ankle Angles"],
+    ["Shoulder Angles", "Knee Angles", "Ankle Angles"],
     horizontal=True
 )
 
@@ -167,6 +168,10 @@ if 'left_shoulder_min' not in st.session_state:
     st.session_state.left_shoulder_max = float('-inf')
     st.session_state.right_shoulder_min = float('inf')
     st.session_state.right_shoulder_max = float('-inf')
+    st.session_state.left_knee_min = float('inf')
+    st.session_state.left_knee_max = float('-inf')
+    st.session_state.right_knee_min = float('inf')
+    st.session_state.right_knee_max = float('-inf')
     st.session_state.left_ankle_min = float('inf')
     st.session_state.left_ankle_max = float('-inf')
     st.session_state.right_ankle_min = float('inf')
@@ -219,6 +224,8 @@ def process_image(img, analysis_type):
     # Initialize angle variables
     left_shoulder_angle = 0
     right_shoulder_angle = 0
+    left_knee_angle = 0
+    right_knee_angle = 0
     left_ankle_angle = 0
     right_ankle_angle = 0
     
@@ -338,6 +345,106 @@ def process_image(img, analysis_type):
                         (10, 60),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
             
+        elif analysis_type == "Knee Angles":
+            # Left side knee landmarks
+            left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+            left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
+            left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
+            
+            # Right side knee landmarks
+            right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+            right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
+            right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+            
+            # Convert to pixel coordinates for visualization
+            left_hip_px = (int(left_hip.x * w), int(left_hip.y * h))
+            left_knee_px = (int(left_knee.x * w), int(left_knee.y * h))
+            left_ankle_px = (int(left_ankle.x * w), int(left_ankle.y * h))
+            
+            right_hip_px = (int(right_hip.x * w), int(right_hip.y * h))
+            right_knee_px = (int(right_knee.x * w), int(right_knee.y * h))
+            right_ankle_px = (int(right_ankle.x * w), int(right_ankle.y * h))
+            
+            # Calculate knee angles
+            # For left knee - angle between hip, knee, and ankle
+            left_knee_angle = calculate_angle(
+                [left_hip.x, left_hip.y],
+                [left_knee.x, left_knee.y],
+                [left_ankle.x, left_ankle.y]
+            )
+            
+            # For right knee - angle between hip, knee, and ankle
+            right_knee_angle = calculate_angle(
+                [right_hip.x, right_hip.y],
+                [right_knee.x, right_knee.y],
+                [right_ankle.x, right_ankle.y]
+            )
+            
+            # Update knee min/max values
+            st.session_state.left_knee_min = min(st.session_state.left_knee_min, left_knee_angle)
+            st.session_state.left_knee_max = max(st.session_state.left_knee_max, left_knee_angle)
+            st.session_state.right_knee_min = min(st.session_state.right_knee_min, right_knee_angle)
+            st.session_state.right_knee_max = max(st.session_state.right_knee_max, right_knee_angle)
+            
+            # Draw thigh and lower leg lines for visualization
+            # Left side
+            cv2.line(img_bgr, left_hip_px, left_knee_px, (255, 0, 0), 2)  # Thigh line - blue
+            cv2.line(img_bgr, left_knee_px, left_ankle_px, (0, 255, 0), 2)  # Lower leg line - green
+            
+            # Right side
+            cv2.line(img_bgr, right_hip_px, right_knee_px, (255, 0, 0), 2)  # Thigh line - blue
+            cv2.line(img_bgr, right_knee_px, right_ankle_px, (0, 255, 0), 2)  # Lower leg line - green
+            
+            # Draw angle arcs with shading
+            img_bgr = draw_angle_arc(
+                img_bgr, 
+                left_hip_px, 
+                left_knee_px, 
+                left_ankle_px, 
+                left_knee_angle, 
+                color=(0, 200, 0),  # Green shade
+                radius=50,
+                text_offset=(0, -20)
+            )
+            
+            img_bgr = draw_angle_arc(
+                img_bgr, 
+                right_hip_px, 
+                right_knee_px, 
+                right_ankle_px, 
+                right_knee_angle, 
+                color=(0, 200, 0),  # Green shade
+                radius=50,
+                text_offset=(0, -20)
+            )
+            
+            # Highlight knee joints
+            cv2.circle(img_bgr, left_knee_px, 8, (0, 0, 255), -1)  # Red circle
+            cv2.circle(img_bgr, right_knee_px, 8, (0, 0, 255), -1)  # Red circle
+            
+            # Determine knee position description
+            def get_knee_position(angle):
+                if angle < 100:
+                    return "Deep Flexion"
+                elif angle < 140:
+                    return "Moderate Flexion"
+                elif angle < 170:
+                    return "Slight Flexion"
+                else:
+                    return "Extended"
+            
+            left_position = get_knee_position(left_knee_angle)
+            right_position = get_knee_position(right_knee_angle)
+            
+            # Display angle info at the top of the frame
+            cv2.putText(img_bgr, f"Left Knee: {left_knee_angle:.1f} deg ({left_position})",
+                        (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+            
+            cv2.putText(img_bgr, f"Right Knee: {right_knee_angle:.1f} deg ({right_position})",
+                        (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+            
         elif analysis_type == "Ankle Angles":
             # Left side ankle landmarks
             left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
@@ -438,6 +545,8 @@ def process_image(img, analysis_type):
     
     if analysis_type == "Shoulder Angles":
         return img_bgr, left_shoulder_angle, right_shoulder_angle
+    elif analysis_type == "Knee Angles":
+        return img_bgr, left_knee_angle, right_knee_angle
     else:  # Ankle Angles
         return img_bgr, left_ankle_angle, right_ankle_angle
 
@@ -452,6 +561,11 @@ with col2:
             st.session_state.left_shoulder_max = float('-inf')
             st.session_state.right_shoulder_min = float('inf')
             st.session_state.right_shoulder_max = float('-inf')
+        elif analysis_type == "Knee Angles":
+            st.session_state.left_knee_min = float('inf')
+            st.session_state.left_knee_max = float('-inf')
+            st.session_state.right_knee_min = float('inf')
+            st.session_state.right_knee_max = float('-inf')
         else:  # Ankle Angles
             st.session_state.left_ankle_min = float('inf')
             st.session_state.left_ankle_max = float('-inf')
@@ -471,6 +585,9 @@ with col2:
     if analysis_type == "Shoulder Angles":
         st.write(f"Left Shoulder: {st.session_state.left_shoulder_min:.1f} - {st.session_state.left_shoulder_max:.1f} deg")
         st.write(f"Right Shoulder: {st.session_state.right_shoulder_min:.1f} - {st.session_state.right_shoulder_max:.1f} deg")
+    elif analysis_type == "Knee Angles":
+        st.write(f"Left Knee: {st.session_state.left_knee_min:.1f} - {st.session_state.left_knee_max:.1f} deg")
+        st.write(f"Right Knee: {st.session_state.right_knee_min:.1f} - {st.session_state.right_knee_max:.1f} deg")
     else:  # Ankle Angles
         st.write(f"Left Ankle: {st.session_state.left_ankle_min:.1f} - {st.session_state.left_ankle_max:.1f} deg")
         st.write(f"Right Ankle: {st.session_state.right_ankle_min:.1f} - {st.session_state.right_ankle_max:.1f} deg")
@@ -513,6 +630,33 @@ with col2:
         - **120-150 deg**: Low Position
         - **150-180 deg**: Arms Down
         """)
+    elif analysis_type == "Knee Angles":
+        st.write("""
+        1. Allow camera access when prompted
+        2. Position yourself so your full legs are visible
+        3. For best results, stand in profile (side view)
+        4. Take snapshots by clicking the camera button
+        5. Click "Reset" to start a new session
+        6. If app becomes slow, try clicking "Clear Cache"
+        """)
+        
+        # Color legend for knee
+        st.subheader("Color Legend")
+        st.markdown("""
+        - <span style='color:blue'>Blue lines</span>: Thigh (hip to knee)
+        - <span style='color:green'>Green lines</span>: Lower leg (knee to ankle)
+        - <span style='color:red'>Red circles</span>: Knee joints
+        - <span style='color:green'>Green shading</span>: Angle measurement
+        """, unsafe_allow_html=True)
+        
+        # Angle reference for knee
+        st.subheader("Angle Reference")
+        st.markdown("""
+        - **< 100 deg**: Deep Flexion
+        - **100-140 deg**: Moderate Flexion
+        - **140-170 deg**: Slight Flexion
+        - **> 170 deg**: Extended
+        """)
     else:  # Ankle Angles
         st.write("""
         1. Allow camera access when prompted
@@ -539,10 +683,11 @@ with col2:
         - **80-100 deg**: Neutral position
         - **> 100 deg**: Plantarflexion (pointing toes)
         """)
-
 with col1:
     if analysis_type == "Shoulder Angles":
         st.subheader("Shoulder Angle Analysis")
+    elif analysis_type == "Knee Angles":
+        st.subheader("Knee Angle Analysis")
     else:  # Ankle Angles
         st.subheader("Ankle Angle Analysis")
     
@@ -563,13 +708,46 @@ with col1:
         
         # Display current angles
         if analysis_type == "Shoulder Angles":
-            left_position = get_shoulder_position(left_angle) if 'get_shoulder_position' in locals() else ""
-            right_position = get_shoulder_position(right_angle) if 'get_shoulder_position' in locals() else ""
+            # Define shoulder position function here too for access in this scope
+            def get_shoulder_position(angle):
+                if angle < 30:
+                    return "Arms Up"
+                elif angle < 60:
+                    return "High Position"
+                elif angle < 120:
+                    return "Horizontal"
+                elif angle < 150:
+                    return "Low Position"
+                else:
+                    return "Arms Down"
+                
+            left_position = get_shoulder_position(left_angle)
+            right_position = get_shoulder_position(right_angle)
             
             st.markdown(f"""
             ### Current Shoulder Angles:
             - Left Shoulder: **{left_angle:.1f} deg** ({left_position})
             - Right Shoulder: **{right_angle:.1f} deg** ({right_position})
+            """)
+        elif analysis_type == "Knee Angles":
+            # Define knee position function here too for access in this scope
+            def get_knee_position(angle):
+                if angle < 100:
+                    return "Deep Flexion"
+                elif angle < 140:
+                    return "Moderate Flexion"
+                elif angle < 170:
+                    return "Slight Flexion"
+                else:
+                    return "Extended"
+                
+            left_position = get_knee_position(left_angle)
+            right_position = get_knee_position(right_angle)
+            
+            st.markdown(f"""
+            ### Current Knee Angles:
+            - Left Knee: **{left_angle:.1f} deg** ({left_position})
+            - Right Knee: **{right_angle:.1f} deg** ({right_position})
             """)
         else:  # Ankle Angles
             # Define ankle position function here too for access in this scope
