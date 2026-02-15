@@ -1,6 +1,9 @@
 import streamlit as st
 import cv2
 import mediapipe as mp
+st.write("mediapipe __file__:", getattr(mp, "__file__", None))
+st.write("mediapipe __version__:", getattr(mp, "__version__", None))
+st.write("has mp.solutions:", hasattr(mp, "solutions"))
 import numpy as np
 import math
 import time
