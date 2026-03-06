@@ -24,15 +24,28 @@ analysis_type = st.radio(
 # add delay
 delay = st.slider("Delay before capture (seconds)", 1, 10, 5)
 
+if "ready_for_photo" not in st.session_state:
+    st.session_state.ready_for_photo = False
+
 if st.button("Start Capture"):
-
     placeholder = st.empty()
-
     for i in range(delay, 0, -1):
         placeholder.write(f"Capturing in {i}...")
         time.sleep(1)
-
     placeholder.write("Take snapshot now")
+    st.session_state.ready_for_photo = True
+
+camera_image = None
+if st.session_state.ready_for_photo:
+    camera_image = st.camera_input("Take a snapshot", key="camera")
+
+if camera_image is not None:
+    st.image(camera_image)
+    # process the image here
+    # result = analyze_image(camera_image)
+    # st.write(result)
+
+    st.session_state.ready_for_photo = False
 
 def calculate_angle(a, b, c):
     """
