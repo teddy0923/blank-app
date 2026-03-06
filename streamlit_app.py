@@ -21,6 +21,19 @@ analysis_type = st.radio(
     horizontal=True
 )
 
+# add delay
+delay = st.slider("Delay before capture (seconds)", 1, 10, 5)
+
+if st.button("Start Capture"):
+
+    placeholder = st.empty()
+
+    for i in range(delay, 0, -1):
+        placeholder.write(f"Capturing in {i}...")
+        time.sleep(1)
+
+    placeholder.write("Take snapshot now")
+
 def calculate_angle(a, b, c):
     """
     Calculate the angle between three points (in degrees)
