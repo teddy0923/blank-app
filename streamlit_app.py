@@ -21,19 +21,7 @@ analysis_type = st.radio(
     horizontal=True
 )
 
-# add delay
-delay = st.slider("Delay before capture (seconds)", 1, 10, 5)
 
-if "ready_for_photo" not in st.session_state:
-    st.session_state.ready_for_photo = False
-
-if st.button("Start Capture"):
-    placeholder = st.empty()
-    for i in range(delay, 0, -1):
-        placeholder.write(f"Capturing in {i}...")
-        time.sleep(1)
-    placeholder.write("Take snapshot now")
-    st.session_state.ready_for_photo = True
 
 camera_image = None
 if st.session_state.ready_for_photo:
@@ -717,82 +705,34 @@ with col1:
         st.subheader("Shoulder Angle Analysis")
     elif analysis_type == "Knee Angles":
         st.subheader("Knee Angle Analysis")
-    else:  # Ankle Angles
+    else:
         st.subheader("Ankle Angle Analysis")
-    
-    # Camera input
-    camera_image = st.camera_input("Take a snapshot")
-    
-    # Process the image if available
+
+    delay = st.slider("Delay before capture (seconds)", 1, 10, 5)
+
+    if "show_camera" not in st.session_state:
+        st.session_state.show_camera = False
+
+    if st.button("Start Capture"):
+        placeholder = st.empty()
+        for i in range(delay, 0, -1):
+            placeholder.write(f"Capturing in {i}...")
+            time.sleep(1)
+        placeholder.write("Take snapshot now")
+        st.session_state.show_camera = True
+
+    camera_image = None
+    if st.session_state.show_camera:
+        camera_image = st.camera_input("Take a snapshot", key="main_camera")
+
     if camera_image is not None:
-        # Increment snapshot count
         st.session_state.snapshot_count += 1
-        
-        # Process the image using the cached function with the selected analysis type
+
         processed_img, left_angle, right_angle = cached_process_image(camera_image, analysis_type)
-        
-        # Display the processed image
-        st.image(cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB), 
-                 caption=f"Analysis (Snapshot #{st.session_state.snapshot_count})")
-        
-        # Display current angles
-        if analysis_type == "Shoulder Angles":
-            # Define shoulder position function here too for access in this scope
-            def get_shoulder_position(angle):
-                if angle < 30:
-                    return "Arms Up"
-                elif angle < 60:
-                    return "High Position"
-                elif angle < 120:
-                    return "Horizontal"
-                elif angle < 150:
-                    return "Low Position"
-                else:
-                    return "Arms Down"
-                
-            left_position = get_shoulder_position(left_angle)
-            right_position = get_shoulder_position(right_angle)
-            
-            st.markdown(f"""
-            ### Current Shoulder Angles:
-            - Left Shoulder: **{left_angle:.1f} deg** ({left_position})
-            - Right Shoulder: **{right_angle:.1f} deg** ({right_position})
-            """)
-        elif analysis_type == "Knee Angles":
-            # Define knee position function here too for access in this scope
-            def get_knee_position(angle):
-                if angle < 100:
-                    return "Deep Flexion"
-                elif angle < 140:
-                    return "Moderate Flexion"
-                elif angle < 170:
-                    return "Slight Flexion"
-                else:
-                    return "Extended"
-                
-            left_position = get_knee_position(left_angle)
-            right_position = get_knee_position(right_angle)
-            
-            st.markdown(f"""
-            ### Current Knee Angles:
-            - Left Knee: **{left_angle:.1f} deg** ({left_position})
-            - Right Knee: **{right_angle:.1f} deg** ({right_position})
-            """)
-        else:  # Ankle Angles
-            # Define ankle position function here too for access in this scope
-            def get_ankle_position(angle):
-                if angle < 80:
-                    return "Dorsiflexion"
-                elif angle < 100:
-                    return "Neutral"
-                else:
-                    return "Plantarflexion"
-                
-            left_position = get_ankle_position(left_angle)
-            right_position = get_ankle_position(right_angle)
-            
-            st.markdown(f"""
-            ### Current Ankle Angles:
-            - Left Ankle: **{left_angle:.1f} deg** ({left_position})
-            - Right Ankle: **{right_angle:.1f} deg** ({right_position})
-            """)
+
+        st.image(
+            cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB),
+            caption=f"Analysis (Snapshot #{st.session_state.snapshot_count})"
+        )
+
+        st.session_state.show_camera = False
