@@ -705,17 +705,16 @@ with col1:
         # Process the image using the cached function with the selected analysis type
         processed_img, left_angle, right_angle = cached_process_image(camera_image, analysis_type)
         
-        # Display the processed image
-        processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
+        # Encode the processed image as PNG
+        success, encoded_image = cv2.imencode(".png", processed_img)
         
-        # Convert to PIL image for reliable display
-        processed_pil = Image.fromarray(processed_img_rgb.astype(np.uint8))
-        
-        st.image(
-            processed_pil,
-            caption=f"Analysis (Snapshot #{st.session_state.snapshot_count})",
-            use_container_width=True
-        )
+        if success:
+            st.image(
+                encoded_image.tobytes(),
+                caption=f"Analysis (Snapshot #{st.session_state.snapshot_count})"
+            )
+        else:
+            st.error("Failed to encode processed image")
         
         # Display current angles
         if analysis_type == "Shoulder Angles":
