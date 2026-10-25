@@ -706,8 +706,16 @@ with col1:
         processed_img, left_angle, right_angle = cached_process_image(camera_image, analysis_type)
         
         # Display the processed image
-        st.image(cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB), 
-                 caption=f"Analysis (Snapshot #{st.session_state.snapshot_count})")
+        processed_img_rgb = cv2.cvtColor(processed_img, cv2.COLOR_BGR2RGB)
+        
+        # Convert to PIL image for reliable display
+        processed_pil = Image.fromarray(processed_img_rgb.astype(np.uint8))
+        
+        st.image(
+            processed_pil,
+            caption=f"Analysis (Snapshot #{st.session_state.snapshot_count})",
+            use_container_width=True
+        )
         
         # Display current angles
         if analysis_type == "Shoulder Angles":
